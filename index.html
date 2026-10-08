@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ツール停止漏れチェック</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Hiragino Sans', 'Meiryo', 'Yu Gothic', sans-serif;
+  background: #f0f2f5; color: #333; min-height: 100vh;
+}
+.container { max-width: 1400px; margin: 0 auto; padding: 24px; }
+header {
+  background: linear-gradient(135deg, #5c6bc0, #283593);
+  color: white; padding: 24px 32px; border-radius: 12px;
+  margin-bottom: 24px; box-shadow: 0 4px 16px rgba(40,53,147,0.35);
+}
+header h1 { font-size: 22px; font-weight: 700; letter-spacing: 0.03em; }
+header p { font-size: 13px; opacity: 0.85; margin-top: 6px; line-height: 1.6; }
+
+.card { background: white; border-radius: 12px; padding: 16px 24px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.step-title { font-size: 15px; font-weight: 700; color: #333; margin-bottom: 10px; }
+.kintone-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.kintone-btn {
+  background: linear-gradient(135deg, #ea4335, #b3120f); color: white; border: none;
+  padding: 10px 22px; border-radius: 8px; font-size: 14px; font-weight: 700;
+  cursor: pointer; box-shadow: 0 2px 8px rgba(234,67,53,0.3); white-space: nowrap;
+}
+.kintone-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(234,67,53,0.4); }
+.kintone-btn:disabled { background: #ccc; cursor: not-allowed; box-shadow: none; }
+.kintone-status { font-size: 13px; color: #666; }
+.kintone-status.err { color: #d93025; font-weight: 700; }
+.kintone-info { font-size: 12px; color: #555; margin-top: 10px; line-height: 1.8; display: none; }
+.kintone-info.visible { display: block; }
+.kintone-info strong { font-size: 16px; margin: 0 2px; }
+.csv-fallback { border-top: 1px dashed #e8eaed; padding-top: 12px; margin-top: 12px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.cf-label { font-size: 12px; color: #888; white-space: nowrap; font-weight: 600; }
+.cf-slot {
+  flex: 1; min-width: 200px; padding: 10px 14px; border: 1.5px dashed #c5d3e8; border-radius: 6px;
+  background: #fafbfc; cursor: pointer; font-size: 12px; color: #888; transition: all 0.2s; text-align: center;
+}
+.cf-slot:hover, .cf-slot.drag-over { border-color: #1a73e8; background: #e8f0fe; color: #1a73e8; }
+.cf-slot.loaded { border-style: solid; border-color: #1a73e8; background: #e8f0fe; color: #1a73e8; }
+
+.drop-zone {
+  border: 2px dashed #c5d3e8; background: #fafbfc; border-radius: 10px; padding: 26px 24px;
+  cursor: pointer; transition: all 0.2s;
+}
+.drop-zone:hover, .drop-zone.drag-over { border-color: #1a73e8; background: #e8f0fe; }
+.dz-title { font-size: 16px; font-weight: 700; color: #444; }
+.dz-hint { font-size: 12px; color: #888; margin-top: 6px; line-height: 1.7; }
+.dz-hint a { color: #1a73e8; }
+.file-status { display: flex; gap: 12px; margin-top: 14px; flex-wrap: wrap; font-size: 13px; }
+.fs-item { padding: 6px 14px; border-radius: 8px; background: #f5f5f5; color: #888; font-weight: 600; }
+.fs-item.loaded { background: #e6f4ea; color: #1a8e3e; }
+.fs-item.fs-reset { cursor: pointer; background: #fff; border: 1px solid #ddd; color: #999; font-size: 12px; }
+.fs-item.fs-reset:hover { color: #d93025; border-color: #d93025; }
+.dl-guide { margin-top: 12px; font-size: 12px; color: #666; line-height: 1.9; }
+.dl-guide a { color: #1a73e8; }
+
+.btn-area { text-align: center; margin-bottom: 28px; }
+.btn-match {
+  background: linear-gradient(135deg, #1a73e8, #0d47a1); color: white; border: none;
+  padding: 14px 52px; border-radius: 8px; font-size: 16px; font-weight: 700;
+  cursor: pointer; letter-spacing: 0.05em; box-shadow: 0 4px 14px rgba(26,115,232,0.35);
+}
+.btn-match:hover:not(:disabled) { transform: translateY(-2px); }
+.btn-match:disabled { background: #ccc; box-shadow: none; cursor: not-allowed; }
+.btn-note { font-size: 12px; color: #888; margin-top: 8px; }
+
+.results { display: none; }
+.results.visible { display: block; }
+.sum-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+.sum-card { background: white; border-radius: 12px; padding: 16px 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+.sum-card.off { opacity: 0.55; }
+.sum-head { font-size: 14px; font-weight: 700; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.sum-head small { font-weight: 400; color: #888; font-size: 11px; }
+.sum-nums { display: flex; gap: 18px; flex-wrap: wrap; }
+.sum-num { font-size: 12px; color: #666; }
+.sum-num b { display: block; font-size: 26px; line-height: 1.1; font-weight: 800; color: #333; }
+.sum-num.leak b { color: #b3120f; } .sum-num.check b { color: #e07b00; } .sum-num.ok b { color: #1a8e3e; } .sum-num.ex b { color: #888; }
+.all-clear { background: #e6f4ea; color: #1a6e2e; border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; font-weight: 700; font-size: 14px; }
+
+.tool-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+.tb-btn { background: #fff; color: #333; border: 1px solid #ccc; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 700; cursor: pointer; }
+.tb-btn:hover { border-color: #1a73e8; color: #1a73e8; }
+.tb-btn.primary { background: #1a73e8; color: #fff; border-color: #1a73e8; }
+.tb-btn.primary:hover { background: #1557b0; color: #fff; }
+.tb-status { font-size: 12px; color: #1a8e3e; font-weight: 600; }
+
+.pattern-section { background: white; border-radius: 12px; margin-bottom: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); overflow: hidden; }
+.pattern-header { padding: 14px 20px; display: flex; align-items: center; gap: 12px; }
+.ph-title { font-size: 15px; font-weight: 700; color: white; }
+.ph-sub { font-size: 11px; color: rgba(255,255,255,0.85); margin-top: 3px; line-height: 1.5; }
+.ph-count { margin-left: auto; background: rgba(255,255,255,0.25); color: white; font-weight: 700; font-size: 14px; padding: 4px 14px; border-radius: 20px; white-space: nowrap; }
+.sec-leak .pattern-header { background: linear-gradient(135deg, #ea4335, #b3120f); }
+.sec-check .pattern-header { background: linear-gradient(135deg, #f6a623, #e07b00); }
+.sec-ex .pattern-header { background: #607d8b; }
+.sec-ok .pattern-header { background: linear-gradient(135deg, #34a853, #1e7e34); }
+.pattern-body { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th { padding: 10px; text-align: left; font-weight: 600; background: #f8f9fa; border-bottom: 2px solid #e8eaed; white-space: nowrap; color: #555; }
+tbody tr { border-bottom: 1px solid #f0f0f0; }
+tbody tr:last-child { border-bottom: none; }
+tbody tr:hover { background: #f8f9fa; }
+tbody td { padding: 8px 10px; vertical-align: top; line-height: 1.5; }
+td.nw { white-space: nowrap; }
+td.memo { font-size: 12px; color: #555; min-width: 220px; }
+td.memo .cand { display: block; color: #0b47a1; }
+.sub { font-size: 11px; color: #888; }
+.empty-msg { padding: 22px; text-align: center; color: #aaa; font-size: 13px; }
+.chip { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.chip.cheki { background: #e6f4ea; color: #1a8e3e; }
+.chip.mono { background: #fff0d6; color: #e07b00; }
+.chip.st-leak { background: #fde0dd; color: #b3120f; }
+.chip.st-ok { background: #e8f0fe; color: #1557b0; }
+.chip.st-ex { background: #eceff1; color: #546e7a; }
+.chip.st-none { background: #fef7e0; color: #b06000; }
+.chip.warn { background: #fff8e1; color: #b06000; border: 1px solid #f0c36d; }
+a.rec { color: #1a73e8; text-decoration: none; font-weight: 700; }
+a.rec:hover { text-decoration: underline; }
+details.fold > summary { cursor: pointer; list-style: none; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary .ph-title::before { content: '▶ '; font-size: 11px; }
+details.fold[open] > summary .ph-title::before { content: '▼ '; }
+.rule-note { font-size: 12px; color: #777; line-height: 1.9; margin-top: 8px; }
+@media (max-width: 800px) { .sum-grid { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>ツール停止漏れチェック</h1>
+    <p>チェキ・モノで動いたままの案件を、kintone「MEO案件管理」のステータスと照合します。解約・休止中なのにツールが動いている案件（＝停止漏れ）を洗い出すツールです。kintoneは一切更新しません</p>
+  </header>
+
+  <div class="card">
+    <div class="step-title">① kintone「MEO案件管理」を取得</div>
+    <div class="kintone-row">
+      <button class="kintone-btn" id="kintoneBtn">🔄 kintoneから最新取得</button>
+      <span class="kintone-status" id="kintoneStatus">解約済みも含めた全案件のステータスを取得します</span>
+    </div>
+    <div class="kintone-info" id="kintoneInfo"></div>
+    <div class="csv-fallback">
+      <span class="cf-label">予備：</span>
+      <div class="cf-slot" id="kintoneSlot">
+        <input type="file" accept=".csv" style="display:none" id="kintoneFile">
+        <span id="kintoneSlotText">📁 kintoneから書き出したCSV（顧客番号・案件名・ステータス・解約日・モノ顧客番号を含む／絞り込みなし）をドロップ or クリック</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="step-title">② チェキ・モノのCSVを入れる</div>
+    <div class="drop-zone" id="dropZone">
+      <input type="file" accept=".csv,.zip" multiple style="display:none" id="toolFile">
+      <div class="dz-title">ここにCSVをドロップ（クリックでも選べます）</div>
+      <div class="dz-hint">チェキ・モノ どちらか片方だけでも照合できます。中身を見て自動で振り分けます。<br>チェキはメールで届いた <strong>zipのまま</strong> 入れてOKです。モノは「状態」列の並べ替えやフィルターは不要です（運用中だけを自動で対象にします）。</div>
+      <div class="file-status">
+        <span class="fs-item" id="fs-cheki">⬜ チェキ</span>
+        <span class="fs-item" id="fs-mono">⬜ モノ</span>
+        <span class="fs-item fs-reset" id="fs-reset" title="入れたCSVをクリア">🗑 クリア</span>
+      </div>
+    </div>
+    <div class="dl-guide">
+      <strong>CSVの取り方</strong><br>
+      【チェキ】<a href="https://app.ranktoolap.com/reports/exports_csv" target="_blank" rel="noopener">app.ranktoolap.com/reports/exports_csv</a> →「3位以内の日数合計数ダウンロード」に自分のアドレスを入れる → メールで届いたファイルをダウンロード（対象月はそのまま）<br>
+      【モノ】<a href="https://meotool.com/users/reports" target="_blank" rel="noopener">meotool.com/users/reports</a> →「レポート生成」で書き出し（真ん中の欄。期間は絞らなくてOK）
+    </div>
+  </div>
+
+  <div class="btn-area">
+    <button class="btn-match" id="btnMatch" disabled>③ 照合する</button>
+    <div class="btn-note" id="btnNote">①のkintone取得と、②のCSV（どちらか1つ以上）がそろうと照合できます</div>
+  </div>
+
+  <div class="results" id="results">
+    <div class="sum-grid" id="sumGrid"></div>
+    <div id="allClear"></div>
+    <div class="tool-bar">
+      <button class="tb-btn primary" id="copyTextBtn">📋 停止漏れをテキストでコピー（チャット貼り付け用）</button>
+      <button class="tb-btn" id="copyTableBtn">📋 表をコピー（スプシ貼り付け用）</button>
+      <button class="tb-btn" id="csvBtn">📥 結果をCSVダウンロード</button>
+      <span class="tb-status" id="tbStatus"></span>
+    </div>
+    <div id="sections"></div>
+    <div class="card rule-note">
+      <strong>判定ルール</strong><br>
+      ・チェキ：施設名の末尾「様_UL0000」の番号 ＝ kintoneの「顧客番号」で照合します。<br>
+      ・モノ：状態が「運用中」のユーザーID ＝ kintoneの「モノ顧客番号」で照合します（「停止中」は対象外）。<br>
+      ・<span class="chip st-leak">停止漏れ</span> kintoneのステータスが「解約」「休止中」「休止中(滞納)」なのに、ツール側が動いている案件。<br>
+      ・<span class="chip st-none">要確認</span> kintoneに一致する案件が見つからない（顧客番号・モノ顧客番号の未入力や入力ミス、登録名の違い）、またはステータスが空欄。<br>
+      ・<span class="chip st-ex">対象外</span> 「解約(営業用継続)」と、イレギュラー案件として登録済みのもの（意図してツールを残している案件）。<br>
+      ・同じ番号のkintoneレコードが複数あるときは、施策中のレコードを優先して判定します。
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+// ================================================================
+//  設定
+// ================================================================
+// meo-checker・月額案件チェックと同じGAS（meo-checker-kintone-proxy）。?mode=stopcheck で全ステータスの案件を返す
+const KINTONE_GAS_URL = 'https://script.google.com/macros/s/AKfycbymkQZK5BB9DKc1JwMBMhse016CHIeE0sG9gcRVPvnnwoXlmVtkKBlEpzjOM-sS2esD6w/exec';
+const KINTONE_RECORD_URL = 'https://x78zzpelwp0i.cybozu.com/k/51/show#record=';
+
+// 停止漏れとして扱うステータス（先頭一致）。「解約(営業用継続)」は SALES_KEEP が優先されて対象外になる
+const LEAK_PREFIX = ['解約', '休止'];
+const SALES_KEEP = '営業用継続';
+
+// イレギュラー案件：ステータスは解約・休止中だが、意図してツールを残している案件。
+// 追加するときは下に1行足す（key＝モノのユーザーID、cust＝顧客番号。どちらか一致で対象外になる）
+const IRREGULAR = [
+  { key: 'user799038', cust: 'UL2849',   note: '月額1万円・モノの口コミQRコードを利用中' },
+  { key: 'user721058', cust: 'UL2720-2', note: '月額1万円・2店舗口の対応のため継続' },
+  { key: 'user346899', cust: 'UL2485',   note: '月額1万円・営業で利用中' },
+];
+
+// ================================================================
+//  状態
+// ================================================================
+let kintone = null;  // { source, records:[{id,cust,name,status,cancel,monoRaw,shisaku,tool}], byCust:Map, byMono:Map }
+let cheki = null;    // { fileName, rows:[{raw,name,cust}] }
+let mono = null;     // { fileName, rows:[{uid,biz}], stopped:n, noState:bool }
+let lastResult = null;
+
+// ================================================================
+//  共通ユーティリティ
+// ================================================================
+function esc(s) { return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+// 番号用：全角→半角、空白除去、大文字化（「UL 2512」「ＵＬ2512」などの表記ゆれを吸収）
+function normId(s) { return String(s ?? '').normalize('NFKC').replace(/\s+/g, '').toUpperCase(); }
+// 店名用：全角半角・大小文字・空白・記号・末尾の「様」の違いを吸収
+function normName(s) {
+  return String(s ?? '').normalize('NFKC').toLowerCase().replace(/様$/, '')
+    .replace(/[\s\-‐‑–—―ー_・.,，、。'’`"“”()（）\[\]【】「」『』&＆+＋!！?？:：;；\/／\\|｜~〜～*＊#＃@＠]/g, '');
+}
+function todayYMD() { const d = new Date(); return d.getFullYear() + '/' + String(d.getMonth()+1).padStart(2,'0') + '/' + String(d.getDate()).padStart(2,'0'); }
+// 日付を YYYY/MM/DD にそろえる（読めないときは元の文字のまま）
+function fmtDate(v) {
+  const s = String(v ?? '').trim(); if (!s) return '';
+  const m = s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})/);
+  return m ? m[1] + '/' + m[2].padStart(2,'0') + '/' + m[3].padStart(2,'0') : s;
+}
+
+// CSV全文を2次元配列に（引用符内の改行・カンマに対応）
+function parseCSVText(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+  const rows = []; let row = [], cur = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"') { if (text[i+1] === '"') { cur += '"'; i++; } else inQ = false; }
+      else cur += c;
+    } else if (c === '"') inQ = true;
+    else if (c === ',') { row.push(cur); cur = ''; }
+    else if (c === '\n' || c === '\r') {
+      if (c === '\r' && text[i+1] === '\n') i++;
+      row.push(cur); cur = '';
+      if (row.length > 1 || row[0] !== '') rows.push(row);
+      row = [];
+    } else cur += c;
+  }
+  row.push(cur);
+  if (row.length > 1 || row[0] !== '') rows.push(row);
+  return rows;
+}
+// 見出し名→列番号（同じ見出しが複数あるときは全部持つ）
+function headerIndex(header) {
+  const map = {};
+  header.forEach((h, i) => { const k = String(h).trim(); (map[k] = map[k] || []).push(i); });
+  return map;
+}
+function cell(row, idx, name) {
+  const cols = idx[name]; if (!cols) return '';
+  for (const c of cols) { const v = String(row[c] ?? '').trim(); if (v) return v; } // 同名列は最初に値がある方
+  return '';
+}
+// UTF-8で読めなければShift-JISで読む（kintone標準の書き出しはShift-JISのことがある）
+function decodeBytes(buf) {
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+  catch (e) { return new TextDecoder('shift_jis').decode(buf); }
+}
+
+// ================================================================
+//  kintone
+// ================================================================
+function buildKintone(rows2d, source) {
+  if (rows2d.length < 1) throw new Error('データが空です');
+  const idx = headerIndex(rows2d[0]);
+  if (!idx['顧客番号'] || !idx['ステータス']) throw new Error('「顧客番号」「ステータス」の列が見つかりません');
+  const records = [];
+  for (let i = 1; i < rows2d.length; i++) {
+    const r = rows2d[i];
+    const rec = {
+      id: cell(r, idx, 'レコード番号'), cust: cell(r, idx, '顧客番号'), name: cell(r, idx, '案件名'),
+      status: cell(r, idx, 'ステータス'), cancel: fmtDate(cell(r, idx, '解約日')),
+      monoRaw: cell(r, idx, 'モノ顧客番号'), shisaku: cell(r, idx, '施策'), tool: cell(r, idx, '提供ツール'),
+    };
+    if (!rec.cust && !rec.name && !rec.monoRaw) continue;
+    records.push(rec);
+  }
+  const byCust = new Map(), byMono = new Map();
+  const add = (map, k, rec) => { if (!k) return; if (!map.has(k)) map.set(k, []); map.get(k).push(rec); };
+  for (const rec of records) {
+    add(byCust, normId(rec.cust), rec);
+    // モノ顧客番号：「user123」を全部拾う（1つの欄に2つ書いてある場合にも対応）。拾えなければ欄の値そのもの
+    const tokens = (rec.monoRaw.normalize('NFKC').match(/user\s*\d+/gi) || []).map(normId);
+    if (!tokens.length && rec.monoRaw) tokens.push(normId(rec.monoRaw));
+    new Set(tokens).forEach(t => add(byMono, t, rec));
+  }
+  return { source, records, byCust, byMono, hasCancel: !!idx['解約日'], hasMono: !!idx['モノ顧客番号'] };
+}
+function showKintoneInfo() {
+  const el = document.getElementById('kintoneInfo');
+  if (!kintone) { el.classList.remove('visible'); return; }
+  const cnt = {};
+  for (const r of kintone.records) { const s = r.status || '（空欄）'; cnt[s] = (cnt[s] || 0) + 1; }
+  const parts = Object.entries(cnt).sort((a, b) => b[1] - a[1]).map(([s, n]) => esc(s) + ' ' + n);
+  let html = '取得件数 <strong>' + kintone.records.length + '</strong>件　／　ステータス内訳：' + parts.join('、');
+  if (!kintone.hasMono) html += '<br><span style="color:#d93025;font-weight:700">「モノ顧客番号」の列がありません。モノの照合ができないため、列を含めて書き出してください</span>';
+  if (!kintone.hasCancel) html += '<br><span style="color:#b06000">「解約日」の列がないため、解約日は表示されません</span>';
+  const hasLeakStatus = kintone.records.some(r => classify(r.status) === 'leak');
+  if (!hasLeakStatus) html += '<br><span style="color:#d93025;font-weight:700">解約・休止中の案件が1件も入っていません。施策中だけに絞り込まれたデータの可能性があります（このままだと停止漏れを検出できません）</span>';
+  el.innerHTML = html; el.classList.add('visible');
+}
+
+document.getElementById('kintoneBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('kintoneBtn'), st = document.getElementById('kintoneStatus');
+  btn.disabled = true; st.className = 'kintone-status'; st.textContent = '読み込み中...（全件取得のため10〜20秒かかります）';
+  try {
+    const res = await fetch(KINTONE_GAS_URL + '?mode=stopcheck');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const csv = await res.text();
+    if (csv.startsWith('Error:')) throw new Error(csv);
+    const rows = parseCSVText(csv);
+    // GASが未更新だと mode を無視して「施策中だけ」の従来データが返る。解約日列の有無で見分ける
+    if (!rows.length || !rows[0].map(h => String(h).trim()).includes('解約日')) {
+      throw new Error('GAS（meo-checker-kintone-proxy）に停止漏れチェック用の追加コードが入っていません。追加コードを貼って再デプロイするか、下の「予備」にkintoneのCSVを入れてください');
+    }
+    kintone = buildKintone(rows, 'kintone直接取得');
+    st.textContent = '✅ ' + new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) + ' 取得完了';
+    document.getElementById('kintoneSlot').classList.remove('loaded');
+    showKintoneInfo(); afterInput();
+  } catch (err) {
+    st.className = 'kintone-status err'; st.textContent = '❌ ' + err.message;
+  } finally { btn.disabled = false; }
+});
+
+(function () {
+  const slot = document.getElementById('kintoneSlot'), input = document.getElementById('kintoneFile');
+  slot.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => { if (input.files[0]) loadKintoneFile(input.files[0]); input.value = ''; });
+  slot.addEventListener('dragover', e => { e.preventDefault(); slot.classList.add('drag-over'); });
+  slot.addEventListener('dragleave', () => slot.classList.remove('drag-over'));
+  slot.addEventListener('drop', e => { e.preventDefault(); e.stopPropagation(); slot.classList.remove('drag-over'); if (e.dataTransfer.files[0]) loadKintoneFile(e.dataTransfer.files[0]); });
+})();
+async function loadKintoneFile(file) {
+  const st = document.getElementById('kintoneStatus');
+  try {
+    kintone = buildKintone(parseCSVText(decodeBytes(await file.arrayBuffer())), file.name);
+    document.getElementById('kintoneSlot').classList.add('loaded');
+    document.getElementById('kintoneSlotText').textContent = '✅ ' + file.name;
+    st.className = 'kintone-status'; st.textContent = '予備CSVを読み込みました';
+    showKintoneInfo(); afterInput();
+  } catch (err) { st.className = 'kintone-status err'; st.textContent = '❌ ' + file.name + '：' + err.message; }
+}
+
+// ================================================================
+//  チェキ・モノ CSV
+// ================================================================
+(function () {
+  const zone = document.getElementById('dropZone'), input = document.getElementById('toolFile');
+  zone.addEventListener('click', e => { if (e.target.closest('#fs-reset')) return; input.click(); });
+  input.addEventListener('change', () => { handleToolFiles([...input.files]); input.value = ''; });
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => { e.preventDefault(); zone.classList.remove('drag-over'); handleToolFiles([...e.dataTransfer.files]); });
+  document.getElementById('fs-reset').addEventListener('click', e => { e.stopPropagation(); cheki = null; mono = null; updateFileStatus(); afterInput(); });
+  // 枠の外に落としてもブラウザがファイルを開いてしまわないようにする
+  window.addEventListener('dragover', e => e.preventDefault());
+  window.addEventListener('drop', e => e.preventDefault());
+})();
+
+async function handleToolFiles(files) {
+  const errors = [];
+  for (const f of files) {
+    try {
+      if (/\.zip$/i.test(f.name)) {
+        if (typeof JSZip === 'undefined') throw new Error('zipを開く部品を読み込めませんでした。zipを展開してCSVを入れてください');
+        const zip = await JSZip.loadAsync(await f.arrayBuffer());
+        const entries = Object.values(zip.files).filter(z => !z.dir && /\.csv$/i.test(z.name));
+        if (!entries.length) throw new Error('zipの中にCSVがありません');
+        for (const z of entries) routeToolCSV(z.name.split('/').pop(), decodeBytes(await z.async('arraybuffer')));
+      } else {
+        routeToolCSV(f.name, decodeBytes(await f.arrayBuffer()));
+      }
+    } catch (err) { errors.push(f.name + '：' + err.message); }
+  }
+  updateFileStatus(); afterInput();
+  if (errors.length) alert('読み込めなかったファイルがあります\n\n' + errors.join('\n'));
+}
+
+// 見出しの中身でチェキ／モノを見分ける（ファイル名に頼らない）
+function routeToolCSV(fileName, text) {
+  const rows = parseCSVText(text);
+  if (rows.length < 2) throw new Error('データが空です');
+  const idx = headerIndex(rows[0]);
+  if (idx['ユーザーID'] && idx['ビジネス名']) { mono = buildMono(rows, idx, fileName); return; }
+  if (idx['施設名']) { cheki = buildCheki(rows, idx, fileName); return; }
+  if (idx['顧客番号'] && idx['ステータス']) throw new Error('kintoneのCSVのようです。①の「予備」の枠に入れてください');
+  throw new Error('チェキ・モノどちらのCSVか判別できません（見出しに「施設名」または「ユーザーID」「ビジネス名」が必要です）');
+}
+function buildCheki(rows, idx, fileName) {
+  const seen = new Set(), out = [];
+  for (let i = 1; i < rows.length; i++) {
+    const raw = cell(rows[i], idx, '施設名'); if (!raw || seen.has(raw)) continue;
+    seen.add(raw);
+    // 「店名様_UL0000」→ 番号。確認スプシの REGEXEXTRACT(施設名, "様_(.+)") と同じ取り方
+    const m = raw.match(/様\s*[_＿]\s*([^_＿]+)$/) || raw.match(/[_＿]\s*([^_＿]+)$/);
+    const cust = m ? m[1].trim() : '';
+    const name = m ? raw.slice(0, m.index).trim() : raw;
+    out.push({ raw, name, cust });
+  }
+  return { fileName, rows: out };
+}
+function buildMono(rows, idx, fileName) {
+  const users = new Map(); // 1ユーザー＝キーワードの数だけ行があるので1件にまとめる
+  const noState = !idx['状態'];
+  for (let i = 1; i < rows.length; i++) {
+    const uid = cell(rows[i], idx, 'ユーザーID'); if (!uid) continue;
+    const state = noState ? '運用中' : cell(rows[i], idx, '状態');
+    const u = users.get(uid) || { uid, biz: cell(rows[i], idx, 'ビジネス名'), active: false };
+    if (state === '運用中') u.active = true;
+    users.set(uid, u);
+  }
+  const all = [...users.values()];
+  return { fileName, rows: all.filter(u => u.active), stopped: all.filter(u => !u.active).length, noState };
+}
+function updateFileStatus() {
+  const c = document.getElementById('fs-cheki'), m = document.getElementById('fs-mono');
+  c.className = 'fs-item' + (cheki ? ' loaded' : '');
+  c.textContent = cheki ? '✅ チェキ ' + cheki.rows.length + '件（' + cheki.fileName + '）' : '⬜ チェキ';
+  m.className = 'fs-item' + (mono ? ' loaded' : '');
+  m.textContent = mono ? '✅ モノ 運用中 ' + mono.rows.length + '件' + (mono.stopped ? '／停止中 ' + mono.stopped + '件は対象外' : '') + '（' + mono.fileName + '）' : '⬜ モノ';
+}
+
+// ================================================================
+//  照合
+// ================================================================
+function classify(status) {
+  const s = String(status ?? '').normalize('NFKC').replace(/\s+/g, '');
+  if (!s) return 'blank';
+  if (s.includes(SALES_KEEP)) return 'sales';
+  if (LEAK_PREFIX.some(p => s.startsWith(p))) return 'leak';
+  return 'ok';
+}
+// 同じ番号のレコードが複数あるとき：施策中など動いているレコード ＞ 営業用継続 ＞ 解約・休止 ＞ ステータス空欄 の順で採用。同順位はレコード番号が新しい方
+function pickRecord(list) {
+  const rank = { ok: 0, sales: 1, leak: 2, blank: 3 };
+  return [...list].sort((a, b) => rank[classify(a.status)] - rank[classify(b.status)] || (Number(b.id) || 0) - (Number(a.id) || 0))[0];
+}
+function irregularOf(key, cust) {
+  const k = normId(key), c = normId(cust);
+  return IRREGULAR.find(x => (x.key && normId(x.key) === k) || (x.cust && c && normId(x.cust) === c)) || null;
+}
+// kintoneに見つからないとき、店名が近い案件を候補として出す
+function nameCandidates(name) {
+  const n = normName(name); if (n.length < 2) return [];
+  const exact = [], partial = [];
+  for (const rec of kintone.records) {
+    const k = normName(rec.name); if (!k) continue;
+    if (k === n) exact.push(rec);
+    else if (n.length >= 4 && k.length >= 4 && (k.includes(n) || n.includes(k))) partial.push(rec);
+  }
+  const order = { ok: 0, sales: 1, leak: 2, blank: 3 };
+  const sortFn = (a, b) => order[classify(a.status)] - order[classify(b.status)];
+  return exact.sort(sortFn).concat(partial.sort(sortFn)).slice(0, 3);
+}
+function judge(toolLabel, key, toolName, list, rawKey, matchedKeyRaw) {
+  const row = { tool: toolLabel, key, toolName, cust: '', kName: '', status: '', cancel: '', shisaku: '', recId: '', cls: '', memo: [], cands: [] };
+  if (!list || !list.length) { row.cls = 'check'; return row; }
+  const rec = pickRecord(list);
+  Object.assign(row, { cust: rec.cust, kName: rec.name, status: rec.status, cancel: rec.cancel, shisaku: rec.shisaku, recId: rec.id });
+  if (list.length > 1) row.memo.push('同じ番号のkintoneレコードが' + list.length + '件（' + list.map(r => r.status || '空欄').join('・') + '）');
+  const c = classify(rec.status);
+  if (c === 'ok') row.cls = 'ok';
+  else if (c === 'sales') { row.cls = 'excluded'; row.memo.unshift('営業用に継続中'); }
+  else if (c === 'blank') { row.cls = 'check'; row.memo.unshift('kintoneのステータスが空欄'); }
+  else {
+    const irr = irregularOf(toolLabel === 'モノ' ? key : '', rec.cust);
+    if (irr) { row.cls = 'excluded'; row.memo.unshift('イレギュラー案件：' + irr.note); }
+    else {
+      row.cls = 'leak';
+      if (row.cancel && row.cancel > todayYMD()) { row.future = true; row.memo.unshift('解約日がまだ先です（停止は解約日以降）'); }
+    }
+  }
+  return row;
+}
+function runMatch() {
+  if (!kintone || (!cheki && !mono)) return;
+  const rows = [];
+  if (cheki) for (const c of cheki.rows) {
+    const list = c.cust ? kintone.byCust.get(normId(c.cust)) : null;
+    const row = judge('チェキ', c.raw, c.name, list);
+    row.toolCust = c.cust;
+    if (row.cls === 'check' && !row.recId) {
+      row.memo.push(c.cust ? '顧客番号「' + c.cust + '」がkintoneにありません（チェキの登録名か、kintoneの顧客番号を確認）' : '施設名の末尾に「様_顧客番号」がありません（チェキの登録名を修正）');
+      row.cands = nameCandidates(c.name);
+    } else if (list && c.cust !== row.cust) row.memo.push('番号の表記ゆれあり（チェキ「' + c.cust + '」／kintone「' + row.cust + '」）');
+    rows.push(row);
+  }
+  if (mono) for (const u of mono.rows) {
+    const list = kintone.byMono.get(normId(u.uid));
+    const row = judge('モノ', u.uid, u.biz, list);
+    if (row.cls === 'check' && !row.recId) {
+      row.memo.push('このユーザーIDが入ったkintone案件がありません（モノ顧客番号が未入力か、入力ミス）');
+      row.cands = nameCandidates(u.biz);
+    }
+    rows.push(row);
+  }
+  lastResult = { date: todayYMD(), rows };
+  render();
+}
+
+// ================================================================
+//  表示
+// ================================================================
+const CLS_LABEL = { leak: '停止漏れ', check: '要確認', excluded: '対象外', ok: '正常' };
+function statusChip(row) {
+  if (!row.recId && !row.status) return '<span class="chip st-none">一致なし</span>';
+  const c = classify(row.status);
+  const cl = c === 'leak' ? 'st-leak' : c === 'sales' ? 'st-ex' : c === 'blank' ? 'st-none' : 'st-ok';
+  return '<span class="chip ' + cl + '">' + esc(row.status || '空欄') + '</span>';
+}
+function toolChip(t) { return '<span class="chip ' + (t === 'チェキ' ? 'cheki' : 'mono') + '">' + t + '</span>'; }
+function toolCell(row) {
+  return row.tool === 'チェキ' ? esc(row.key) : '<strong>' + esc(row.key) + '</strong><br><span class="sub">' + esc(row.toolName) + '</span>';
+}
+function custCell(row) {
+  if (!row.cust) return row.toolCust ? '<span class="sub">' + esc(row.toolCust) + '</span>' : '';
+  return row.recId ? '<a class="rec" href="' + KINTONE_RECORD_URL + encodeURIComponent(row.recId) + '" target="_blank" rel="noopener" title="kintoneのレコードを開く">' + esc(row.cust) + '</a>' : esc(row.cust);
+}
+function memoCell(row) {
+  let h = row.memo.map(esc).join('<br>');
+  for (const c of row.cands) {
+    h += '<span class="cand">候補：' + (c.id ? '<a class="rec" href="' + KINTONE_RECORD_URL + encodeURIComponent(c.id) + '" target="_blank" rel="noopener">' + esc(c.cust || '番号なし') + '</a>' : esc(c.cust || '番号なし'))
+      + ' ' + esc(c.name) + '（' + esc(c.status || 'ステータス空欄') + (row.tool === 'モノ' ? '／モノ顧客番号：' + esc(c.monoRaw || '空欄') : '') + '）</span>';
+  }
+  return h;
+}
+function tableHtml(list) {
+  if (!list.length) return '<div class="empty-msg">該当なし</div>';
+  return '<table><thead><tr><th>ツール</th><th>ツール側の登録</th><th>顧客番号</th><th>kintone案件名</th><th>ステータス</th><th>解約日</th><th>施策</th><th>メモ</th></tr></thead><tbody>'
+    + list.map(r => '<tr><td class="nw">' + toolChip(r.tool) + '</td><td>' + toolCell(r) + '</td><td class="nw">' + custCell(r) + '</td><td>' + esc(r.kName) + '</td><td class="nw">' + statusChip(r)
+      + '</td><td class="nw">' + esc(r.cancel) + (r.future ? ' <span class="chip warn">解約日前</span>' : '') + '</td><td class="nw">' + esc(r.shisaku) + '</td><td class="memo">' + memoCell(r) + '</td></tr>').join('')
+    + '</tbody></table>';
+}
+// 並び順：チェキ→モノ。停止漏れは解約日が古い順（長く放置されている順）
+function sortRows(list, byCancel) {
+  const t = r => r.tool === 'チェキ' ? 0 : 1;
+  return [...list].sort((a, b) => t(a) - t(b) || (byCancel ? (a.cancel || '9999').localeCompare(b.cancel || '9999') : 0));
+}
+function render() {
+  const R = lastResult; if (!R) return;
+  const by = cls => R.rows.filter(r => r.cls === cls);
+  const leak = sortRows(by('leak'), true), check = sortRows(by('check')), ex = sortRows(by('excluded')), ok = sortRows(by('ok'));
+
+  const card = (label, loaded, sub) => {
+    const n = cls => R.rows.filter(r => r.tool === label && r.cls === cls).length;
+    const total = R.rows.filter(r => r.tool === label).length;
+    if (!loaded) return '<div class="sum-card off"><div class="sum-head">' + toolChip(label) + '<small>CSV未投入（今回は照合していません）</small></div></div>';
+    return '<div class="sum-card"><div class="sum-head">' + toolChip(label) + '<small>' + esc(sub) + '</small></div><div class="sum-nums">'
+      + '<div class="sum-num">照合した件数<b>' + total + '</b></div><div class="sum-num leak">停止漏れ<b>' + n('leak') + '</b></div><div class="sum-num check">要確認<b>' + n('check') + '</b></div>'
+      + '<div class="sum-num ex">対象外<b>' + n('excluded') + '</b></div><div class="sum-num ok">正常<b>' + n('ok') + '</b></div></div></div>';
+  };
+  document.getElementById('sumGrid').innerHTML =
+    card('チェキ', !!cheki, cheki ? cheki.fileName : '') +
+    card('モノ', !!mono, mono ? mono.fileName + '／運用中のみ' + (mono.stopped ? '（停止中' + mono.stopped + '件は除外）' : '') + (mono.noState ? '／「状態」列なし：全件を運用中として扱いました' : '') : '');
+  document.getElementById('allClear').innerHTML = (!leak.length && !check.length) ? '<div class="all-clear">✅ 停止漏れ・要確認はありません（' + esc(R.date) + ' 時点）</div>' : '';
+
+  const section = (cls, title, sub, list, fold, open) => {
+    const head = '<div class="pattern-header"><div><div class="ph-title">' + title + '</div><div class="ph-sub">' + sub + '</div></div><span class="ph-count">' + list.length + ' 件</span></div>';
+    const body = '<div class="pattern-body">' + tableHtml(list) + '</div>';
+    return fold ? '<div class="pattern-section ' + cls + '"><details class="fold"' + (open ? ' open' : '') + '><summary>' + head + '</summary>' + body + '</details></div>'
+                : '<div class="pattern-section ' + cls + '">' + head + body + '</div>';
+  };
+  document.getElementById('sections').innerHTML =
+    section('sec-leak', '停止漏れ（ツールの停止が必要）', 'kintoneは解約・休止中なのに、チェキ／モノが動いたままの案件です。ツール側で停止してください', leak) +
+    section('sec-check', '要確認（kintoneと照合できない）', 'kintoneに一致する案件がない、またはステータスが空欄です。チェキは登録名の末尾の顧客番号、モノはkintoneの「モノ顧客番号」を確認してください。店名が近い案件があれば「候補」に出します', check) +
+    section('sec-ex', '対象外（意図してツールを残している案件）', '「解約(営業用継続)」と、イレギュラー案件として登録済みのもの', ex, true, false) +
+    section('sec-ok', '正常（施策中などでツール稼働中）', 'クリックで一覧を開きます', ok, true, false);
+
+  document.getElementById('results').classList.add('visible');
+  document.getElementById('tbStatus').textContent = '';
+}
+
+// ================================================================
+//  出力（コピー・CSV）
+// ================================================================
+const OUT_HEAD = ['チェック日', '判定', 'ツール', 'ツール側の登録', 'ツール側の店名', '顧客番号', 'kintone案件名', 'ステータス', '解約日', '施策', 'メモ'];
+function outRows() {
+  const order = { leak: 0, check: 1, excluded: 2, ok: 3 };
+  return sortRows(lastResult.rows, true).sort((a, b) => order[a.cls] - order[b.cls]).map(r => [
+    lastResult.date, CLS_LABEL[r.cls], r.tool, r.key, r.toolName, r.cust || r.toolCust || '', r.kName, r.status, r.cancel, r.shisaku,
+    r.memo.concat(r.cands.map(c => '候補：' + (c.cust || '番号なし') + ' ' + c.name + '（' + (c.status || 'ステータス空欄') + '）')).join(' / ')
+  ]);
+}
+async function copyText(text, msg) {
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) { const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+  document.getElementById('tbStatus').textContent = '✅ ' + msg;
+}
+function leakText() {
+  const R = lastResult, lines = ['■ツール停止漏れチェック ' + R.date];
+  const item = r => '・' + (r.tool === 'チェキ' ? r.key : r.key + ' ' + r.toolName + '（' + r.cust + '）') + '｜' + r.status + (r.cancel ? '（解約日 ' + r.cancel + '）' : '') + (r.future ? '※解約日前' : '');
+  for (const t of ['チェキ', 'モノ']) {
+    if (t === 'チェキ' ? !cheki : !mono) continue;
+    const list = sortRows(R.rows.filter(r => r.tool === t && r.cls === 'leak'), true);
+    lines.push('', '【' + t + '】停止漏れ ' + list.length + '件');
+    if (list.length) list.forEach(r => lines.push(item(r))); else lines.push('・なし');
+  }
+  const check = sortRows(R.rows.filter(r => r.cls === 'check'));
+  if (check.length) {
+    lines.push('', '【要確認】kintoneと照合できない ' + check.length + '件');
+    check.forEach(r => lines.push('・' + r.tool + '：' + (r.tool === 'チェキ' ? r.key : r.key + ' ' + r.toolName) + (r.recId ? '（ステータス空欄）' : '（一致なし）')));
+  }
+  return lines.join('\n');
+}
+document.getElementById('copyTextBtn').addEventListener('click', () => copyText(leakText(), 'テキストをコピーしました'));
+document.getElementById('copyTableBtn').addEventListener('click', () => {
+  const clean = v => String(v ?? '').replace(/[\t\r\n]+/g, ' ');
+  copyText([OUT_HEAD].concat(outRows()).map(r => r.map(clean).join('\t')).join('\n'), '表をコピーしました（スプレッドシートにそのまま貼れます）');
+});
+document.getElementById('csvBtn').addEventListener('click', () => {
+  const q = v => { const s = String(v ?? ''); return /[",\r\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const csv = '﻿' + [OUT_HEAD].concat(outRows()).map(r => r.map(q).join(',')).join('\r\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+  a.download = 'ツール停止漏れチェック_' + lastResult.date.replace(/\//g, '') + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+});
+
+// ================================================================
+//  入力がそろったら自動で照合
+// ================================================================
+function afterInput() {
+  const ready = !!kintone && (!!cheki || !!mono);
+  document.getElementById('btnMatch').disabled = !ready;
+  document.getElementById('btnNote').textContent = ready ? 'データを入れ直すたびに自動で照合し直します'
+    : !kintone ? 'あとは ①のkintone取得 が必要です' : 'あとは ②のCSV（チェキ・モノのどちらか1つ以上）が必要です';
+  if (ready) runMatch();
+  else { lastResult = null; document.getElementById('results').classList.remove('visible'); }
+}
+document.getElementById('btnMatch').addEventListener('click', () => { runMatch(); document.getElementById('results').scrollIntoView({ behavior: 'smooth' }); });
+</script>
+</body>
+</html>
